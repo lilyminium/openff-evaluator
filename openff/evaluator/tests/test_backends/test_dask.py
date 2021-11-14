@@ -78,6 +78,10 @@ def test_lsf_wrapped_function():
     expected_output = 12345
 
     with DaskLSFBackend() as backend:
+        print(backend._cluster)
+        assert backend._cluster is not None
+        print(backend._client)
+        assert backend._client is not None
         result = backend._wrapped_function(
             dummy_function,
             expected_output,
