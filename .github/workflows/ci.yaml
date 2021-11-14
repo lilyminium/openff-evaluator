@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - "master"
+      - "lily/*"
   pull_request:
     branches:
       - "master"
