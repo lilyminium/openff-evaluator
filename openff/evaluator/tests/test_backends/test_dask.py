@@ -54,7 +54,6 @@ def test_dask_jobqueue_backend_creation(cluster_class):
     gpu_backend.stop()
 
 
-@pytest.mark.skip(reason="This code currently hangs only on travis.")
 def test_multiprocessor():
 
     expected_output = 12345
@@ -63,7 +62,6 @@ def test_multiprocessor():
     assert expected_output == return_value
 
 
-@pytest.mark.skip(reason="This code currently hangs only on travis.")
 def test_lsf_wrapped_function():
 
     available_resources = QueueWorkerResources()
