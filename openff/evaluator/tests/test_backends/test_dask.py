@@ -77,13 +77,14 @@ def test_lsf_wrapped_function():
 
     expected_output = 12345
 
-    result = DaskLSFBackend._wrapped_function(
-        dummy_function,
-        expected_output,
-        available_resources=available_resources,
-        registered_workflow_protocols=protocols_to_import,
-        per_worker_logging=per_worker_logging,
-        gpu_assignments=gpu_assignments,
-    )
+    with DaskLSFBackend() as backend:
+        result = backend._wrapped_function(
+            dummy_function,
+            expected_output,
+            available_resources=available_resources,
+            registered_workflow_protocols=protocols_to_import,
+            per_worker_logging=per_worker_logging,
+            gpu_assignments=gpu_assignments,
+        )
 
     assert expected_output == result
