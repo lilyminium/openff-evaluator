@@ -686,6 +686,7 @@ class DaskPBSBackend(BaseDaskJobQueueBackend):
         )
 
         self._resource_line = resource_line
+        
 
     def _get_extra_cluster_kwargs(self):
 
@@ -765,6 +766,11 @@ class DaskSLURMBackend(BaseDaskJobQueueBackend):
             cluster_type="slurm",
             adaptive_class=adaptive_class,
         )
+
+    def _get_env_extra(self):
+        output = super()._get_env_extra()
+        print(output)
+        return output
 
     def _get_cluster_class(self):
         from dask_jobqueue import SLURMCluster
