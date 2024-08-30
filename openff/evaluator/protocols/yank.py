@@ -1356,6 +1356,7 @@ class SolvationYankProtocol(BaseYankProtocol):
         output_file
             The path to the output PDB file.
         """
+        from collections import Counter
         import mdtraj as md
         import pandas as pd
         
@@ -1416,20 +1417,34 @@ class SolvationYankProtocol(BaseYankProtocol):
         # create virtual site trajectory
         atoms_df, bonds_df = original_trajectory.topology.to_dataframe()
         next_serial = atoms_df["serial"].max() + 1
-        next_resSeq = atoms_df["resSeq"].max() + 1
         next_chainID = atoms_df["chainID"].max() + 1
+
+        # get residue serials and  from parent atoms
+        parent_atom_indices = []
+        for index in range(n_real_atoms, n_particles):
+            vsite = system.getVirtualSite(index)
+            parent_index = vsite.getParticle(0)
+            parent_atom_indices.append(parent_index)
+
+        parent_resSeq = atoms_df.resSeq.values[parent_atom_indices]
+        parent_resname = atoms_df.resName.values[parent_atom_indices]
+
         vs_df = pd.DataFrame(
             {
                 "serial": np.arange(next_serial, next_serial + n_virtual_sites),
-                "resSeq": np.arange(next_resSeq, next_resSeq + n_virtual_sites),
+                "resSeq": parent_resSeq,
+                "resName": parent_resname,
             }
         )
-        vs_df["name"] = "EP"
-        vs_df["element"] = "VS"
+        # carefully do name -- can have multiple vsites
+        names = []
+        residue_counter = Counter()
+        for _, row in vs_df.iterrows():
+            residue_counter[row["resSeq"]] += 1
+            names.append(f"EP{residue_counter[row['resSeq']]}")
 
-        # not sure how to accurately assign to residues
-        # for now, just assign to the last residue
-        vs_df["resName"] = "HOH"
+        vs_df["name"] = names
+        vs_df["element"] = "VS"
         vs_df["chainID"] = next_chainID
         vs_df["segmentID"] = atoms_df["segmentID"].values[0]
         

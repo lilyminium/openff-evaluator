@@ -48,8 +48,10 @@ def modify_workflow_schema(workflow_schema):
 
 class TestSolvationFreeEnergy:
     @pytest.mark.parametrize("forcefield_name", [
-        "sage-with-tip3p.json",
-        "sage-with-opc.json"
+        "sage-with-tip3p.json",         # no virtual sites
+        "sage-with-opc.json",           # solvent with virtual sites
+        # not supported by openmmtools yet
+        # "test-vsites-halogens.json",    # solute with virtual sites
     ])
     def test_run_with_vsite_solvent(self, forcefield_name):
         # load force field
@@ -75,4 +77,4 @@ class TestSolvationFreeEnergy:
                 result = workflow.execute()
                 assert not isinstance(result.value, UndefinedAttribute)
                 assert not result.exceptions
-                        
+                                
