@@ -1,4 +1,4 @@
-name: openff-evaluator-0.3-test
+name: test
 channels:
   - conda-forge
 dependencies:
