@@ -1,0 +1,74 @@
+{
+    "@type": "openff.evaluator.datasets.datasets.PhysicalPropertyDataSet",
+    "properties": [
+      {
+        "@type": "openff.evaluator.properties.solvation.SolvationFreeEnergy",
+        "gradients": [],
+        "id": "CCl",
+        "phase": 2,
+        "source": {
+          "@type": "openff.evaluator.datasets.provenance.MeasurementSource",
+          "doi": "NA",
+          "reference": ""
+        },
+        "substance": {
+          "@type": "openff.evaluator.substances.substances.Substance",
+          "amounts": {
+            "CCl{sol}": [
+              {
+                "@type": "openff.evaluator.substances.amounts.ExactAmount",
+                "value": 1
+              }
+            ],
+            "O{solv}": [
+              {
+                "@type": "openff.evaluator.substances.amounts.MoleFraction",
+                "value": 1.0
+              }
+            ]
+          },
+          "components": [
+            {
+              "@type": "openff.evaluator.substances.components.Component",
+              "role": {
+                "@type": "openff.evaluator.substances.components.Component.Role",
+                "value": "solv"
+              },
+              "smiles": "O"
+            },
+            {
+              "@type": "openff.evaluator.substances.components.Component",
+              "role": {
+                "@type": "openff.evaluator.substances.components.Component.Role",
+                "value": "sol"
+              },
+              "smiles": "CCl"
+            }
+          ]
+        },
+        "thermodynamic_state": {
+          "@type": "openff.evaluator.thermodynamics.ThermodynamicState",
+          "pressure": {
+            "@type": "openff.evaluator.unit.Quantity",
+            "unit": "kilopascal",
+            "value": 101.325
+          },
+          "temperature": {
+            "@type": "openff.evaluator.unit.Quantity",
+            "unit": "kelvin",
+            "value": 298.15
+          }
+        },
+        "uncertainty": {
+          "@type": "openff.evaluator.unit.Quantity",
+          "unit": "kilojoule / mole",
+          "value": 0.5
+        },
+        "value": {
+          "@type": "openff.evaluator.unit.Quantity",
+          "unit": "kilojoule / mole",
+          "value": 10.0 
+        }
+      }
+    ]
+}
