@@ -24,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macOS-latest, ubuntu-latest]
+        os: [macOS-12, ubuntu-latest]
         python-version: [3.8, 3.9]
         openeye: [true, false]
 
