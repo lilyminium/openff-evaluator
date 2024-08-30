@@ -36,7 +36,7 @@ dependencies:
   - rdkit
   - cmiles
   - python-dateutil
-  - pydantic ==1
+  - pydantic <2
   - paprika
   - taproom
   - dataclasses
