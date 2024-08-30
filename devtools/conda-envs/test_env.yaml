@@ -41,5 +41,6 @@ dependencies:
   - taproom
   - dataclasses
   - smirnoff-plugins # For testing custom nonbonded forces
-  - pip:
-    - pip install git+https://github.com/lilyminium/mdtraj@v1.9.8-fix-integer
+  # manually installed by cloning and with python setup.py install
+  # - pip:
+  #   - pip install git+https://github.com/lilyminium/mdtraj@v1.9.8-fix-integer
