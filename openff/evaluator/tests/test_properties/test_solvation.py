@@ -55,7 +55,7 @@ class TestSolvationFreeEnergy:
     ])
     def test_run_with_vsite_solvent(self, forcefield_name):
         # load force field
-        sage_with_opc_json = get_data_filename(f"test/forcefields/{forcefield_name}")
+        forcefield_json = get_data_filename(f"test/forcefields/{forcefield_name}")
 
         # load dataset
         dataset_path = get_data_filename("test/datasets/single-sfe-dataset.json")
@@ -64,7 +64,7 @@ class TestSolvationFreeEnergy:
         # generate metadata
         metadata = Workflow.generate_default_metadata(
             dataset.properties[0],
-            sage_with_opc_json
+            forcefield_json
         )
 
         default_schema = SolvationFreeEnergy.default_simulation_schema(n_molecules=250)
