@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - "master"
+      - v0.3.11-dev
   pull_request:
     branches:
       - "master"
+      - v0.3.11-dev
   workflow_dispatch:
   schedule:
     - cron: "0 0 * * *"
