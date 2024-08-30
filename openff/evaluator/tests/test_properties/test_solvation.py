@@ -13,6 +13,9 @@ from openff.evaluator.utils.utils import get_data_filename, temporarily_change_d
 
 
 def modify_workflow_schema(workflow_schema):
+    """
+    Modify a SolvationFreeEnergy schema to run faster for testing.
+    """
     new_workflow_schema = []
     for schema in workflow_schema.protocol_schemas:
         if schema.id == "equilibration_simulation":
@@ -44,8 +47,6 @@ def modify_workflow_schema(workflow_schema):
 
 
 class TestSolvationFreeEnergy:
-
-    @pytest.mark.slow
     @pytest.mark.parametrize("forcefield_name", [
         "sage-with-tip3p.json",
         "sage-with-opc.json"
@@ -74,4 +75,4 @@ class TestSolvationFreeEnergy:
                 result = workflow.execute()
                 assert not isinstance(result.value, UndefinedAttribute)
                 assert not result.exceptions
-                
+                        
