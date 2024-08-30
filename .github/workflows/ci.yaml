@@ -29,21 +29,26 @@ jobs:
         openeye: [true, false]
 
     steps:
-      - uses: actions/checkout@v3.0.2
+      - uses: actions/checkout@v4
 
       - name: Setup Conda Environment
-        uses: conda-incubator/setup-miniconda@v2.1.1
+        uses: mamba-org/setup-micromamba@v1
         with:
-
-          python-version: ${{ matrix.python-version }}
           environment-file: devtools/conda-envs/test_env.yaml
 
-          activate-environment: test
+      # - name: Setup Conda Environment
+      #   uses: conda-incubator/setup-miniconda@v2.1.1
+      #   with:
 
-          auto-update-conda: true
-          auto-activate-base: false
+      #     python-version: ${{ matrix.python-version }}
+      #     environment-file: devtools/conda-envs/test_env.yaml
 
-          show-channel-urls: true
+      #     activate-environment: test
+
+      #     auto-update-conda: true
+      #     auto-activate-base: false
+
+      #     show-channel-urls: true
 
       # this crashes if we stick it in the conda file for some reason
       - name: Install custom MDTraj
