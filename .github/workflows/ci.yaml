@@ -26,26 +26,44 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macOS-latest, ubuntu-latest]
+        os: [macOS-12, ubuntu-latest]
         python-version: [3.8, 3.9]
         openeye: [true, false]
 
     steps:
-      - uses: actions/checkout@v3.0.2
+      - uses: actions/checkout@v4
 
       - name: Setup Conda Environment
-        uses: conda-incubator/setup-miniconda@v2.1.1
+        uses: mamba-org/setup-micromamba@v1
         with:
-
-          python-version: ${{ matrix.python-version }}
           environment-file: devtools/conda-envs/test_env.yaml
+          create-args: >-
+            python=${{ matrix.python-version }}
 
-          activate-environment: test
+      # - name: Setup Conda Environment
+      #   uses: conda-incubator/setup-miniconda@v2.1.1
+      #   with:
 
-          auto-update-conda: true
-          auto-activate-base: false
+      #     python-version: ${{ matrix.python-version }}
+      #     environment-file: devtools/conda-envs/test_env.yaml
 
-          show-channel-urls: true
+      #     activate-environment: test
+
+      #     auto-update-conda: true
+      #     auto-activate-base: false
+
+      #     show-channel-urls: true
+
+      # this crashes if we stick it in the conda file for some reason
+      - name: Install custom MDTraj
+        shell: bash -l {0}
+        run: |
+          pip uninstall -y mdtraj
+
+          git clone https://github.com/lilyminium/mdtraj
+          cd mdtraj
+          git checkout v1.9.8-fix-integer
+          python setup.py install
 
       - name: Install OpenEye
         if: matrix.openeye

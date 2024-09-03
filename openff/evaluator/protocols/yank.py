@@ -1239,6 +1239,8 @@ class SolvationYankProtocol(BaseYankProtocol):
         """Analyzes a particular phase, extracting the relevant free energies
         and computing the required free energies."""
 
+        import mdtraj as md
+        import pandas as pd
         from openff.toolkit.topology import Molecule, Topology
 
         free_energies = self._analysed_output["free_energy"]
@@ -1274,7 +1276,17 @@ class SolvationYankProtocol(BaseYankProtocol):
             self._analysed_output["general"][phase_name]["nstates"] - 1,
         )
 
-        solvent_topology_omm = solvent_trajectory.topology.to_openmm()
+        # remove virtual site atoms
+        # following the logic chain, this topology is used for:
+        # _compute_state_energy_gradients ->
+        #   _compute_gradients ->
+        #    system_subset ->
+        #      create_openmm_system with a force field subset.
+        atom_df, bond_df = solvent_trajectory.topology.to_dataframe()
+        if "VS" in atom_df.element.values:
+            atom_df = pd.DataFrame(atom_df[atom_df.element != "VS"])
+        topology_without_vs = md.Topology.from_dataframe(atom_df, bond_df)
+        solvent_topology_omm = topology_without_vs.to_openmm()
         solvent_topology = Topology.from_openmm(
             solvent_topology_omm,
             [
@@ -1325,6 +1337,131 @@ class SolvationYankProtocol(BaseYankProtocol):
             solution_gradients,
             solvent_gradients,
         )
+    
+    @staticmethod
+    def _write_trajectory_with_all_sites(
+        pdb_file: str,
+        system_file: str,
+        output_file: str,
+    ):
+        """
+        Write PDB and system to new file, adding virtual sites if necessary.
+
+        Parameters
+        ----------
+        pdb_file
+            The path to the PDB file.
+        system_file
+            The path to the OpenMM system file.
+        output_file
+            The path to the output PDB file.
+        """
+        from collections import Counter
+        import mdtraj as md
+        import pandas as pd
+        
+        try:
+            import openmm
+            from openmm import app
+        except ImportError:
+            from simtk import openmm
+            from simtk.openmm import app
+        
+        # load inputs
+        pdb = app.pdbfile.PDBFile(pdb_file)
+        original_trajectory = md.load(pdb_file)
+        with open(system_file, "r") as file:
+            system = openmm.XmlSerializer.deserialize(file.read())
+
+        # hackily set NBForce Cutoff distance to 0.4 the min vector
+        # otherwise we cannot construct a Context
+        # we get the following error
+        # openmm.OpenMMException: NonbondedForce: The cutoff distance cannot be greater than half the periodic box size
+        nbforce = [fc for fc in system.getForces() if "Non" in type(fc).__name__][0]
+        box_vectors = pdb.topology.getPeriodicBoxVectors()
+        if box_vectors is not None:
+            max_length = min([max(v) for v in box_vectors])
+            nbforce.setCutoffDistance(max_length * 0.4)
+            system.setDefaultPeriodicBoxVectors(*box_vectors)
+
+        qs = [
+            nbforce.getParticleParameters(i)[0]._value
+            for i in range(system.getNumParticles())
+        ]
+
+        # create system
+        integrator = openmm.VerletIntegrator(0.1 * openmm.unit.femtoseconds)
+        platform = openmm.Platform.getPlatformByName("Reference")
+        openmm_context = openmm.Context(system, integrator, platform)
+        openmm_context.setPeriodicBoxVectors(*box_vectors)
+
+        # calculate placeholder positions
+        n_particles = system.getNumParticles()
+        real_positions = pdb.getPositions(asNumpy=True)
+        n_real_atoms = real_positions.shape[0]
+        n_virtual_sites = n_particles - n_real_atoms
+        if n_virtual_sites == 0:
+            original_trajectory.save(output_file)
+
+        full_positions = np.concatenate([
+            real_positions.value_in_unit(openmm.unit.nanometers),
+            np.zeros((n_virtual_sites, 3))
+        ])
+
+        # use OpenMM to calculate full positions
+        openmm_context.setPositions(full_positions * openmm.unit.nanometers)
+        openmm_context.computeVirtualSites()
+        state = openmm_context.getState(getPositions=True)
+        all_positions = state.getPositions(asNumpy=True).value_in_unit(openmm.unit.nanometers)
+
+        # create virtual site trajectory
+        atoms_df, bonds_df = original_trajectory.topology.to_dataframe()
+        next_serial = atoms_df["serial"].max() + 1
+        next_chainID = atoms_df["chainID"].max() + 1
+
+        # get residue serials and  from parent atoms
+        parent_atom_indices = []
+        for index in range(n_real_atoms, n_particles):
+            vsite = system.getVirtualSite(index)
+            parent_index = vsite.getParticle(0)
+            parent_atom_indices.append(parent_index)
+
+        parent_resSeq = atoms_df.resSeq.values[parent_atom_indices]
+        parent_resname = atoms_df.resName.values[parent_atom_indices]
+
+        vs_df = pd.DataFrame(
+            {
+                "serial": np.arange(next_serial, next_serial + n_virtual_sites),
+                "resSeq": parent_resSeq,
+                "resName": parent_resname,
+            }
+        )
+        # carefully do name -- can have multiple vsites
+        names = []
+        residue_counter = Counter()
+        for _, row in vs_df.iterrows():
+            residue_counter[row["resSeq"]] += 1
+            names.append(f"EP{residue_counter[row['resSeq']]}")
+
+        vs_df["name"] = names
+        vs_df["element"] = "VS"
+        vs_df["chainID"] = next_chainID
+        vs_df["segmentID"] = atoms_df["segmentID"].values[0]
+        
+        # create new topology
+        new_topology = md.Topology.from_dataframe(
+            pd.concat([atoms_df, vs_df], ignore_index=True),
+            bonds=bonds_df
+        )
+        new_trajectory = md.Trajectory(
+            xyz=[all_positions],
+            topology=new_topology,
+            unitcell_lengths=original_trajectory.unitcell_lengths,
+            unitcell_angles=original_trajectory.unitcell_angles,
+        )
+        assert new_trajectory.xyz.shape == (1, n_particles, 3)
+        new_trajectory.save(output_file)
+
 
     def _execute(self, directory, available_resources):
 
@@ -1361,19 +1498,36 @@ class SolvationYankProtocol(BaseYankProtocol):
         # Because of quirks in where Yank looks files while doing temporary
         # directory changes, we need to copy the coordinate files locally so
         # they are correctly found.
-        shutil.copyfile(
+        # shutil.copyfile(
+        #     self.solution_1_coordinates,
+        #     os.path.join(directory, "original1.pdb")
+        #     # os.path.join(directory, self._local_solution_1_coordinates),
+        # )
+
+        # instead of copying files, we will read in these files
+        # and then write them out with virtual sites.
+
+        self._write_trajectory_with_all_sites(
             self.solution_1_coordinates,
+            self.solution_1_system.system_path,
             os.path.join(directory, self._local_solution_1_coordinates),
         )
+
         shutil.copyfile(
             self.solution_1_system.system_path,
             os.path.join(directory, self._local_solution_1_system),
         )
 
-        shutil.copyfile(
+        self._write_trajectory_with_all_sites(
             self.solution_2_coordinates,
+            self.solution_2_system.system_path,
             os.path.join(directory, self._local_solution_2_coordinates),
         )
+        # shutil.copyfile(
+        #     self.solution_2_coordinates,
+        #     os.path.join(directory, "original2.pdb")
+        #     # os.path.join(directory, self._local_solution_2_coordinates),
+        # )
         shutil.copyfile(
             self.solution_2_system.system_path,
             os.path.join(directory, self._local_solution_2_system),

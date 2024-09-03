@@ -12,23 +12,23 @@ dependencies:
   - codecov
 
     # Standard dependencies
-  - openff-toolkit >=0.10.6
-  - openff-units >=0.1.4
+  - cython ==0.29.36
+  - openff-toolkit ==0.10.6
+  - openff-units ==0.1.4
   - smirnoff99frosst
   - numpy
   - pandas
-  - openmm >=7.6
+  - openmm ==7.7
   - networkx
-  - pint >=0.16.1
+  - pint ==0.17
   - packmol
   - pymbar >=3.0.5
-  - mdtraj >=1.9.3
   - dask >=2.7.0
   - distributed >=2.7.0
   - dask-jobqueue >=0.7.0
   - coverage >=4.4
   - uncertainties
-  - openmmtools
+  - openmmtools ==0.21.5
   - yank >=0.25.2
   - pyyaml
   - requests
@@ -36,8 +36,11 @@ dependencies:
   - rdkit
   - cmiles
   - python-dateutil
-  - pydantic
+  - pydantic <2
   - paprika
   - taproom
   - dataclasses
   - smirnoff-plugins # For testing custom nonbonded forces
+  # manually installed by cloning and with python setup.py install
+  # - pip:
+  #   - pip install git+https://github.com/lilyminium/mdtraj@v1.9.8-fix-integer
