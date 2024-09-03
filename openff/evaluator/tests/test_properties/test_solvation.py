@@ -27,7 +27,7 @@ def modify_workflow_schema(workflow_schema):
             protocol = schema.to_protocol()
             yank_protocol = protocol.protocols["run_solvation_yank"]
             yank_protocol.number_of_equilibration_iterations = 1
-            yank_protocol.number_of_iterations = 5
+            yank_protocol.number_of_iterations = 10
             yank_protocol.checkpoint_frequency = 1
             yank_protocol.steps_per_iteration = 100
             yank_protocol.electrostatic_lambdas_1 = [1.0, 0.5, 0.0]
