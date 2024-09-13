@@ -757,6 +757,15 @@ class EvaluatorClient:
                 isinstance(response, RequestResult)
                 and len(response.queued_properties) > 0
             ):
+                n_estimated = len(response.estimated_properties)
+                n_unsuccessful = len(response.unsuccessful_properties)
+                n_queued = len(response.queued_properties)
+                logger.debug(
+                    f"Querying {request_id} || "
+                    f"Estimated: {n_estimated}, "
+                    f"Unsuccessful: {n_unsuccessful}, "
+                    f"Queued: {n_queued}"
+                )
                 continue
 
             logger.info(f"The server has completed request {request_id}.")
