@@ -462,7 +462,7 @@ class BuildSmirnoffSystem(BaseBuildSystem):
     """
 
     def _execute(self, directory, available_resources):
-
+        from openff.units import unit
         from openff.toolkit.topology import Molecule, Topology
 
         pdb_file = app.PDBFile(self.coordinate_file_path)
@@ -495,6 +495,28 @@ class BuildSmirnoffSystem(BaseBuildSystem):
         )
 
         system = force_field.create_openmm_system(topology)
+
+        # add carboxylic acid dihedral restraint to avoid sampling issues
+        # note that this relies very much on the following assumptions:
+        # - this is an SFE
+        carboxylic_acid_smarts_pattern = "[#1:1]-[#8:2]-[X3:3](=[#8:4])"
+        matches = topology.chemical_environment_matches(carboxylic_acid_smarts_pattern)
+        if matches:
+            logger.warning(
+                "WARNING: Applying a restraint to the carboxylic acid dihedral to avoid sampling issues. "
+                "If this is not desired, do not use this fork or environment!!!"
+            )
+            restraint = openmm.PeriodicTorsionForce()
+            for i, j, k, ll in matches:
+                restraint.addTorsion(
+                    # H-O-C(=O)
+                    i, j, k, ll,
+                    1, # periodicity
+                    to_openmm(0 * unit.degrees), # trans -- it's 180 offset
+                    # k from Klimovich and Mobley, 2010, JCAMD
+                    to_openmm(300 * unit.kilojoules_per_mole),
+                )
+            system.addForce(restraint)
 
         if system is None:
 
