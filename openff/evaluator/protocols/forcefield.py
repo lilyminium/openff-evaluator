@@ -507,7 +507,8 @@ class BuildSmirnoffSystem(BaseBuildSystem):
                 "If this is not desired, do not use this fork or environment!!!"
             )
             restraint = openmm.PeriodicTorsionForce()
-            for i, j, k, ll in matches:
+            for chemical_match in matches:
+                i, j, k, ll = chemical_match._topology_atom_indices
                 restraint.addTorsion(
                     # H-O-C(=O)
                     i, j, k, ll,
