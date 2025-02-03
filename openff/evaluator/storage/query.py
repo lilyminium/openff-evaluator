@@ -232,30 +232,47 @@ class BaseSimulationDataQuery(BaseDataQuery, abc.ABC):
                 return None
 
             for component in self.substance.components:
-                if component.smiles != data_substance.components[0].smiles:
-                    continue
-
-                # Make sure the amount type matches up i.e either both
-                # are defined in mole fraction, or both as an exact amount.
-                data_amount = next(
-                    iter(data_substance.get_amounts(component.identifier))
-                )
-                query_amount = next(
-                    iter(self.substance.get_amounts(component.identifier))
-                )
-
-                if type(data_amount) is not type(query_amount):
-                    continue
-
-                if isinstance(data_amount, ExactAmount) and data_amount != query_amount:
-                    # Make sure there is the same amount if we are
-                    # dealing with exact amounts.
+                if not self._component_matches_substance(component, data_substance):
                     continue
 
                 # A match was found.
                 return data_substance
 
         return None
+    
+    def _component_matches_substance(
+        self,
+        query_component,
+        target_substance
+    ) -> bool:
+        """Attempt to match a component substance
+        
+        Parameters
+        ----------
+        query_component: Component
+        
+        """
+        if query_component.smiles != target_substance.components[0].smiles:
+            return False
+
+        # Make sure the amount type matches up i.e either both
+        # are defined in mole fraction, or both as an exact amount.
+        data_amount = next(
+            iter(target_substance.get_amounts(query_component.identifier))
+        )
+        query_amount = next(
+            iter(self.substance.get_amounts(query_component.identifier))
+        )
+
+        if type(data_amount) is not type(query_amount):
+            return False
+
+        if isinstance(data_amount, ExactAmount) and data_amount != query_amount:
+            # Make sure there is the same amount if we are
+            # dealing with exact amounts.
+            return False
+        return True
+
 
     def apply(self, data_object, attributes_to_ignore=None):
         matches = []

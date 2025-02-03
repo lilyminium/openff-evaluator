@@ -210,6 +210,19 @@ class WorkflowCalculationLayer(CalculationLayer, abc.ABC):
             calculation_result.data_to_store.extend(workflow_result.data_to_store)
 
         return results
+    
+    @classmethod
+    def _update_batch_from_workflow_graph(cls, batch, workflow_graph):
+        """Update a batch object from a workflow graph.
+
+        Parameters
+        ----------
+        batch: CalculationLayerBatch
+            The batch to update.
+        workflow_graph: WorkflowGraph
+            The workflow graph to update the batch from.
+        """
+        pass
 
     @classmethod
     def _schedule_calculation(
@@ -234,7 +247,7 @@ class WorkflowCalculationLayer(CalculationLayer, abc.ABC):
             batch.parameter_gradient_keys,
             batch.options,
         )
-
+        
         workflow_futures = workflow_graph.execute(layer_directory, calculation_backend)
 
         future = calculation_backend.submit_task(

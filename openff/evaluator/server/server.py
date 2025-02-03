@@ -536,6 +536,8 @@ class EvaluatorServer:
 
         current_layer = registered_calculation_layers[current_layer_type]
 
+        raise ValueError("ok launching?")
+
         current_layer.schedule_calculation(
             self._calculation_backend,
             self._storage_backend,
@@ -568,6 +570,10 @@ class EvaluatorServer:
         encoded_json = recvall(connection, message_length)
         json_model = encoded_json.decode()
 
+        print("JOSN MODEL")
+        print(json_model)
+        raise ValueError("ok")
+
         request_id = None
         error = None
 
@@ -591,6 +597,8 @@ class EvaluatorServer:
                 request_id = str(uuid.uuid4()).replace("-", "")
 
             self._batch_ids_per_client_id[request_id] = []
+
+        raise ValueError(error)
 
         # Pass the id of the submitted requests back to the client
         # as well as any error which may have occurred.
