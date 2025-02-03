@@ -20,34 +20,15 @@ from openff.evaluator.layers.workflow import (
     WorkflowCalculationLayer,
     WorkflowCalculationSchema,
 )
-from openff.evaluator.layers.equilibration import EquilibrationProperty, ConditionAggregationBehavior
 from openff.evaluator.storage.query import EquilibrationDataQuery
 
+from openff.evaluator.layers.equilibration import (
+    EquilibrationProperty, ConditionAggregationBehavior,
+    default_storage_query, EquilibrationLayer
+)
+
+
 logger = logging.getLogger(__name__)
-
-
-def default_storage_query():
-    """Return the default query to use when retrieving cached simulation
-     data from the storage backend.
-
-    Currently this query will search for data for the full substance of
-    interest in the liquid phase.
-
-    Returns
-    -------
-    dict of str and SimulationDataQuery
-        A single query with a key of `"full_system_data"`.
-    """
-
-    query = EquilibrationDataQuery()
-    query.substance = PlaceholderValue()
-    query.thermodynamic_state = PlaceholderValue()
-    query.max_number_of_molecules = PlaceholderValue()
-
-    query.property_phase = PropertyPhase.Liquid
-    query.calculation_layer = "EquilibrationLayer"
-
-    return {"full_system_data": query}
 
 
 class PreequilibratedSimulationSchema(WorkflowCalculationSchema):
@@ -158,22 +139,11 @@ class PreequilibratedSimulationLayer(WorkflowCalculationLayer):
         required_force_field_keys = set()
 
         for key in template_queries:
-            query = copy.deepcopy(template_queries[key])
-
-            # Fill in any place holder values.
-            if isinstance(query.thermodynamic_state, PlaceholderValue):
-                query.thermodynamic_state = physical_property.thermodynamic_state
-            if isinstance(query.max_number_of_molecules, PlaceholderValue):
-                query.max_number_of_molecules = calculation_schema.number_of_molecules
-
-            # need to treat the substance specially as mole fractions can vary with number of molecules
-            if isinstance(query.substance, PlaceholderValue):
-                query.substance = physical_property.substance.to_substance_n_molecules(
-                    calculation_schema.number_of_molecules
-                )
-                # query.substance = physical_property.substance
-
-            
+            query = EquilibrationLayer._update_query(
+                template_queries[key],
+                physical_property,
+                calculation_schema,
+            )
 
             # Apply the query.
             query_results = storage_backend.query(query)

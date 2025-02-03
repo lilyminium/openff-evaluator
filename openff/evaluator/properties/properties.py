@@ -129,15 +129,22 @@ class EstimableExcessProperty(PhysicalProperty, abc.ABC):
         # Make sure the protocols point to the correct substance.
         component_protocols.build_coordinates.substance = component_substance
 
+        component_protocols.check_existing_data.simulation_data_path = ProtocolPath(
+            f"component_data[{component_replicator.placeholder_id}]",
+            "global",
+        )
+
         # Build the final workflow schema
         schema = WorkflowSchema()
 
         schema.protocol_schemas = [
+            component_protocols.check_existing_data.schema,
             component_protocols.build_coordinates.schema,
             component_protocols.assign_parameters.schema,
             component_protocols.energy_minimisation.schema,
             # component_protocols.equilibration_simulation.schema,
             component_protocols.converge_uncertainty.schema,
+            mixture_protocols.check_existing_data.schema,
             mixture_protocols.build_coordinates.schema,
             mixture_protocols.assign_parameters.schema,
             mixture_protocols.energy_minimisation.schema,
@@ -155,6 +162,9 @@ class EstimableExcessProperty(PhysicalProperty, abc.ABC):
         }
 
         calculation_schema.workflow_schema = schema
+        calculation_schema.storage_queries = (
+            cls._default_equilibration_data_storage_query()
+        )
         return calculation_schema
 
     @classmethod
@@ -590,7 +600,7 @@ class EstimableExcessProperty(PhysicalProperty, abc.ABC):
         calculation_schema.relative_tolerance = relative_tolerance
         calculation_schema.number_of_molecules = n_molecules
         calculation_schema.storage_queries = (
-            cls._default_preequilibrated_simulation_storage_query()
+            cls._default_equilibration_data_storage_query()
         )
         calculation_schema.n_uncorrelated_samples = n_uncorrelated_samples
         calculation_schema.equilibration_condition_aggregation_behavior = equilibration_condition_aggregation_behavior
@@ -603,7 +613,7 @@ class EstimableExcessProperty(PhysicalProperty, abc.ABC):
         return calculation_schema
 
     @classmethod
-    def _default_preequilibrated_simulation_storage_query(
+    def _default_equilibration_data_storage_query(
         cls,
     ) -> Dict[str, SimulationDataQuery]:
         """Returns the default storage queries to use when retrieving cached simulation

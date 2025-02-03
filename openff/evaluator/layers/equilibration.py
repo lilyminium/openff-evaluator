@@ -1,6 +1,7 @@
 """A calculation layer for equilibration.
 """
 
+import os
 import copy
 import logging
 
@@ -10,19 +11,48 @@ from openff.evaluator.attributes import (
     UNDEFINED,
     Attribute,
     AttributeClass,
+    PlaceholderValue,
 )
+from openff.evaluator.datasets import CalculationSource
+
 from openff.evaluator.layers import calculation_layer
+from openff.evaluator.datasets import PropertyPhase
 from openff.evaluator.layers.layers import BaseCalculationLayerSchema
 from openff.evaluator.layers.workflow import (
     WorkflowCalculationLayer,
     WorkflowCalculationSchema,
     BaseWorkflowCalculationSchema,
+    WorkflowGraph,
 )
 from openff.evaluator.workflow.attributes import ConditionAggregationBehavior
 from openff.evaluator.utils.observables import ObservableType, ObservableFrame
 from openff.evaluator.workflow import Workflow
+from openff.evaluator.storage.query import EquilibrationDataQuery
 
 logger = logging.getLogger(__name__)
+
+def default_storage_query():
+    """Return the default query to use when retrieving cached simulation
+     data from the storage backend.
+
+    Currently this query will search for data for the full substance of
+    interest in the liquid phase.
+
+    Returns
+    -------
+    dict of str and SimulationDataQuery
+        A single query with a key of `"full_system_data"`.
+    """
+
+    query = EquilibrationDataQuery()
+    query.substance = PlaceholderValue()
+    query.thermodynamic_state = PlaceholderValue()
+    query.max_number_of_molecules = PlaceholderValue()
+
+    query.property_phase = PropertyPhase.Liquid
+    query.calculation_layer = "EquilibrationLayer"
+
+    return {"full_system_data": query}
 
 
 class EquilibrationProperty(AttributeClass):
@@ -114,12 +144,24 @@ class EquilibrationSchema(WorkflowCalculationSchema):
         type_hint=int,
         default_value=100,
     )
+    storage_queries = Attribute(
+        docstring="The queries to perform when retrieving data for each "
+        "of the components in the system from the storage backend. The "
+        "keys of this dictionary will correspond to the metadata keys made "
+        "available to the workflow system.",
+        type_hint=dict,
+        default_value=default_storage_query(),
+    )
 
     def validate(self, attribute_type=None):
         if self.error_tolerances:
             for error_tolerance in self.error_tolerances:
                 assert isinstance(error_tolerance, EquilibrationProperty)
                 error_tolerance.validate()
+
+        assert all(
+            isinstance(x, EquilibrationDataQuery) for x in self.storage_queries.values()
+        )
         super(EquilibrationSchema, self).validate(attribute_type)
 
 
@@ -165,6 +207,27 @@ class EquilibrationLayer(WorkflowCalculationLayer):
             Returns `None` if the required metadata could not be
             found / assembled.
         """
+        # search storage for matching boxes already
+        template_queries = calculation_schema.storage_queries
+        found_queries = []
+        for key in template_queries:
+            query = EquilibrationLayer._update_query(
+                template_queries[key],
+                physical_property,
+                calculation_schema,
+            )
+
+            # Apply the query.
+            query_results = storage_backend.query(query)
+            # # TODO: should the key be hardcoded?
+            # # TODO: although it is already in the protocols I believe
+            # if key == "full_system_data" and len(query_results) > 0:
+            #     found_queries.append(key)
+            # elif key == "component_data":
+            #     # can't just check length because multiple can match same component
+            #     # so, need to check all components are matched
+            #     pass
+                
 
         global_metadata = Workflow.generate_default_metadata(
             physical_property,
@@ -174,8 +237,80 @@ class EquilibrationLayer(WorkflowCalculationLayer):
         )
         global_metadata["error_tolerances"] = copy.deepcopy(calculation_schema.error_tolerances)
         global_metadata["error_aggregation"] = calculation_schema.error_aggregration
+
+
+        stored_data_tuples = []
+        for query_list in query_results.values():
+            for storage_key, data_object, data_directory in query_list:
+                object_path = os.path.join(working_directory, f"{storage_key}")
+                if not os.path.isfile(object_path):
+                    data_object.json(object_path)
+
+                force_field_path = os.path.join(
+                    working_directory, f"{data_object.force_field_id}"
+                )
+                if not os.path.isfile(force_field_path):
+                    existing_force_field = storage_backend.retrieve_force_field(
+                        data_object.force_field_id
+                    )
+                    
+                    existing_force_field.json(force_field_path)
+
+                stored_data_tuples.append((object_path, data_directory, force_field_path))
+                
+        
+        if len(stored_data_tuples) == 1:
+            stored_data_tuples = stored_data_tuples[0]
+        
+        global_metadata[key] = stored_data_tuples
+
+        raise ValueError(global_metadata)
         return global_metadata
+    
+    @staticmethod
+    def _update_query(query, physical_property, calculation_schema):
+        query = copy.deepcopy(query)
+
+        # Fill in any place holder values.
+        if isinstance(query.thermodynamic_state, PlaceholderValue):
+            query.thermodynamic_state = physical_property.thermodynamic_state
+        if isinstance(query.max_number_of_molecules, PlaceholderValue):
+            query.max_number_of_molecules = calculation_schema.number_of_molecules
+
+        # need to treat the substance specially as mole fractions can vary with number of molecules
+        if isinstance(query.substance, PlaceholderValue):
+            query.substance = physical_property.substance.to_substance_n_molecules(
+                calculation_schema.number_of_molecules
+            )
+            # query.substance = physical_property.substance
+        return query
 
     @classmethod
     def required_schema_type(cls):
         return EquilibrationSchema
+
+    # @classmethod
+    # def _update_batch_from_workflow_graph(cls, batch, workflow_graph):
+    #     """Update a batch object from a workflow graph to move all
+    #     properties not currently in the graph to the equilibrated bucket.
+
+    #     Parameters
+    #     ----------
+    #     batch: CalculationLayerBatch
+    #         The batch to update.
+    #     workflow_graph: WorkflowGraph
+    #         The workflow graph to update the batch from.
+    #     """
+    #     property_ids_to_execute = [
+    #         workflow.uuid
+    #         for workflow in workflow_graph._workflows_to_execute.values()
+    #     ]
+    #     properties_to_move = [
+    #         prop
+    #         for prop in batch.queued_properties
+    #         if prop.id not in property_ids_to_execute
+    #     ]
+    #     for prop in properties_to_move:
+    #         batch.queued_properties.remove(prop)
+        
+    #     batch.equilibrated_properties.extend(properties_to_move)
