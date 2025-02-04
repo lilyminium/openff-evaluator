@@ -1067,3 +1067,310 @@ class OpenMMEvaluateEnergies(BaseEvaluateEnergies):
             available_resources,
             self.enable_pbc,
         )
+
+
+@workflow_protocol()
+class OpenMMSimulatedAnnealing(OpenMMSimulation):
+    """Performs a molecular dynamics simulation in a given ensemble using
+    an OpenMM backend.
+
+    This protocol employs the Langevin integrator implemented in the ``openmmtools``
+    package to propagate the state of the system using the default BAOAB splitting [1]_.
+    Further, simulations which are run in the NPT simulation will have a Monte Carlo
+    barostat (openmm.MonteCarloBarostat) applied every 25 steps (the OpenMM
+    default).
+
+    References
+    ----------
+    [1] Leimkuhler, Ben, and Charles Matthews. "Numerical methods for stochastic
+        molecular dynamics." Molecular Dynamics. Springer, Cham, 2015. 261-328.
+    """
+
+    def _simulate(self, context, integrator):
+        """Performs the simulation using a given context
+        and integrator.
+
+        Parameters
+        ----------
+        context: openmm.Context
+            The OpenMM context to run with.
+        integrator: openmm.Integrator
+            The integrator to evolve the simulation with.
+        """
+        from openmm import app
+        from openmm import unit as openmm_unit
+
+        # Define how many steps should be taken.
+        total_number_of_steps = (
+            self.total_number_of_iterations * self.steps_per_iteration
+        )
+
+        # Try to load the current state from any available checkpoint information
+        current_step = self._resume_from_checkpoint(context)
+
+        if current_step == total_number_of_steps:
+            return
+
+        # Build the reporters which we will use to report the state
+        # of the simulation.
+        append_trajectory = is_file_and_not_empty(self._local_trajectory_path)
+        dcd_reporter = self._DCDReporter(self._local_trajectory_path, append_trajectory)
+
+        statistics_file = open(self._local_statistics_path, "a+")
+
+        statistics_reporter = app.StateDataReporter(
+            statistics_file,
+            0,
+            step=True,
+            potentialEnergy=True,
+            kineticEnergy=True,
+            totalEnergy=True,
+            temperature=True,
+            volume=True,
+            density=True,
+            speed=True,
+        )
+
+        # Create the object which will transfer simulation output to the
+        # reporters.
+        topology = app.PDBFile(self.input_coordinate_file).topology
+        system = self.parameterized_system.system
+        simulation = self._Simulation(
+            integrator,
+            topology,
+            system,
+            context,
+            current_step,
+        )
+
+        # Perform the simulation.
+        checkpoint_counter = 0
+        min_temperature = to_openmm(0 * unit.kelvin)
+        target_temperature = to_openmm(self.thermodynamic_state.temperature)
+        max_temperature = to_openmm(
+            self.thermodynamic_state.temperature + 50 * unit.kelvin
+        )
+        n_steps = 100
+
+        assert current_step == 0 # for now
+
+        # heat up first to target, ignore inputs
+        temperature_step = 0.5
+        barostat = next(
+            fc for fc in system.getForces() if isinstance(fc, openmm.MonteCarloBarostat)
+        )
+        for temp in np.arange(
+            0, target_temperature.value_in_unit(openmm_unit.kelvin), temperature_step
+        ):
+            temp_K = temp * openmm_unit.kelvin
+            integrator.setTemperature(temp_K)
+            barostat.setDefaultTemperature(temp_K)
+            integrator.step(n_steps)
+
+            current_step += n_steps
+
+            state = context.getState(
+                getPositions=True,
+                getEnergy=True,
+                getVelocities=False,
+                getForces=False,
+                getParameters=False,
+                enforcePeriodicBox=self.enable_pbc,
+            )
+
+            simulation.currentStep = current_step
+
+            if current_step % self.output_frequency == 0:
+                # Write out the current state using the reporters.
+                dcd_reporter.report(simulation, state)
+                statistics_reporter.report(simulation, state)
+
+                if checkpoint_counter >= self.checkpoint_frequency:
+                    # Save to the checkpoint file if needed.
+                    self._write_checkpoint_file(current_step, context)
+                    checkpoint_counter = 0
+
+                checkpoint_counter += 1
+
+        n_target_steps = current_step + total_number_of_steps
+
+        # simulate at target
+        while current_step < n_target_steps:
+            steps_to_take = min(
+                self.output_frequency, n_target_steps - current_step
+            )
+            integrator.step(steps_to_take)
+
+            current_step += steps_to_take
+
+            state = context.getState(
+                getPositions=True,
+                getEnergy=True,
+                getVelocities=False,
+                getForces=False,
+                getParameters=False,
+                enforcePeriodicBox=self.enable_pbc,
+            )
+
+            simulation.currentStep = current_step
+
+            # Write out the current state using the reporters.
+            dcd_reporter.report(simulation, state)
+            statistics_reporter.report(simulation, state)
+
+            if checkpoint_counter >= self.checkpoint_frequency:
+                # Save to the checkpoint file if needed.
+                self._write_checkpoint_file(current_step, context)
+                checkpoint_counter = 0
+
+            checkpoint_counter += 1
+
+        # heat to max
+        for temp in np.arange(
+            target_temperature.value_in_unit(openmm_unit.kelvin),
+            max_temperature.value_in_unit(openmm_unit.kelvin),
+            temperature_step
+        ):
+            temp_K = temp * openmm_unit.kelvin
+            integrator.setTemperature(temp_K)
+            barostat.setDefaultTemperature(temp_K)
+            integrator.step(n_steps)
+
+            current_step += n_steps
+
+            state = context.getState(
+                getPositions=True,
+                getEnergy=True,
+                getVelocities=False,
+                getForces=False,
+                getParameters=False,
+                enforcePeriodicBox=self.enable_pbc,
+            )
+
+            simulation.currentStep = current_step
+
+            if current_step % self.output_frequency == 0:
+                # Write out the current state using the reporters.
+                dcd_reporter.report(simulation, state)
+                statistics_reporter.report(simulation, state)
+
+                if checkpoint_counter >= self.checkpoint_frequency:
+                    # Save to the checkpoint file if needed.
+                    self._write_checkpoint_file(current_step, context)
+                    checkpoint_counter = 0
+
+                checkpoint_counter += 1
+
+        # simulate at hot temperature
+        n_target_steps = current_step + total_number_of_steps
+        while current_step < n_target_steps:
+            steps_to_take = min(
+                self.output_frequency, n_target_steps - current_step
+            )
+            integrator.step(steps_to_take)
+
+            current_step += steps_to_take
+
+            state = context.getState(
+                getPositions=True,
+                getEnergy=True,
+                getVelocities=False,
+                getForces=False,
+                getParameters=False,
+                enforcePeriodicBox=self.enable_pbc,
+            )
+
+            simulation.currentStep = current_step
+
+            # Write out the current state using the reporters.
+            dcd_reporter.report(simulation, state)
+            statistics_reporter.report(simulation, state)
+
+            if checkpoint_counter >= self.checkpoint_frequency:
+                # Save to the checkpoint file if needed.
+                self._write_checkpoint_file(current_step, context)
+                checkpoint_counter = 0
+
+            checkpoint_counter += 1
+
+        # cool down to target temperature
+
+        for temp in np.arange(
+            max_temperature.value_in_unit(openmm_unit.kelvin),
+            target_temperature.value_in_unit(openmm_unit.kelvin),
+            -temperature_step
+        ):
+            temp_K = temp * openmm_unit.kelvin
+            integrator.setTemperature(temp_K)
+            barostat.setDefaultTemperature(temp_K)
+            integrator.step(n_steps)
+
+            current_step += n_steps
+
+            state = context.getState(
+                getPositions=True,
+                getEnergy=True,
+                getVelocities=False,
+                getForces=False,
+                getParameters=False,
+                enforcePeriodicBox=self.enable_pbc,
+            )
+
+            simulation.currentStep = current_step
+
+            if current_step % self.output_frequency == 0:
+                # Write out the current state using the reporters.
+                dcd_reporter.report(simulation, state)
+                statistics_reporter.report(simulation, state)
+
+                if checkpoint_counter >= self.checkpoint_frequency:
+                    # Save to the checkpoint file if needed.
+                    self._write_checkpoint_file(current_step, context)
+                    checkpoint_counter = 0
+
+                checkpoint_counter += 1
+
+        n_target_steps = current_step + total_number_of_steps
+
+        # simulate at target
+        while current_step < n_target_steps:
+            steps_to_take = min(
+                self.output_frequency, n_target_steps - current_step
+            )
+            integrator.step(steps_to_take)
+
+            current_step += steps_to_take
+
+            state = context.getState(
+                getPositions=True,
+                getEnergy=True,
+                getVelocities=False,
+                getForces=False,
+                getParameters=False,
+                enforcePeriodicBox=self.enable_pbc,
+            )
+
+            simulation.currentStep = current_step
+
+            # Write out the current state using the reporters.
+            dcd_reporter.report(simulation, state)
+            statistics_reporter.report(simulation, state)
+
+            if checkpoint_counter >= self.checkpoint_frequency:
+                # Save to the checkpoint file if needed.
+                self._write_checkpoint_file(current_step, context)
+                checkpoint_counter = 0
+
+            checkpoint_counter += 1
+
+
+        # Save out the final positions.
+        self._write_checkpoint_file(current_step, context)
+
+        final_state = context.getState(getPositions=True)
+
+        positions = extract_positions(final_state, extract_atom_indices(system))
+        topology.setPeriodicBoxVectors(final_state.getPeriodicBoxVectors())
+
+        with open(self.output_coordinate_file, "w+") as configuration_file:
+            app.PDBFile.writeFile(topology, positions, configuration_file)

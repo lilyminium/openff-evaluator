@@ -59,6 +59,7 @@ class PreequilibratedSimulationProtocols(Generic[S]):
     unpack_stored_data: storage.UnpackStoredSimulationData
     assign_parameters: forcefield.BaseBuildSystem
     energy_minimisation: openmm.OpenMMEnergyMinimisation
+    simulated_annealing: openmm.OpenMMSimulatedAnnealing
     converge_equilibration: ProtocolGroup
     production_simulation: openmm.OpenMMSimulation
     analysis_protocol: S
@@ -691,8 +692,25 @@ def generate_preequilibrated_simulation_protocols(
         "parameterized_system", assign_parameters.id
     )
 
+    simulated_annealing = openmm.OpenMMSimulatedAnnealing(
+        f"simulated_annealing{id_suffix}"
+    )
+    simulated_annealing.input_coordinate_file = ProtocolPath(
+        "output_coordinate_file", energy_minimisation.id
+    )
+    simulated_annealing.parameterized_system = ProtocolPath(
+        "parameterized_system", assign_parameters.id
+    )
+    simulated_annealing.ensemble = Ensemble.NPT
+    simulated_annealing.steps_per_iteration = 100000
+    simulated_annealing.output_frequency = 2000
+    simulated_annealing.timestep = 2.0 * unit.femtosecond
+    simulated_annealing.thermodynamic_state = ProtocolPath(
+        "thermodynamic_state", "global"
+    )
+
     conditional_group_eq, equilibration_simulation, _ = generate_conditional_equilibration_protocols(
-        energy_minimisation=energy_minimisation,
+        energy_minimisation=simulated_annealing,
         assign_parameters=assign_parameters,
         id_suffix=id_suffix,
         conditional_id_suffix=f"_equilibration{id_suffix}",
@@ -844,6 +862,7 @@ def generate_preequilibrated_simulation_protocols(
         unpack_stored_data,
         assign_parameters,
         energy_minimisation,
+        simulated_annealing,
         conditional_group_eq,
         production_simulation,
         analysis_protocol,

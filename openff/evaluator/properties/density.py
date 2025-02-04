@@ -116,6 +116,7 @@ class Density(PhysicalProperty):
         calculation_schema.error_aggregration = copy.deepcopy(condition_aggregation_behavior)
         calculation_schema.error_on_failure = error_on_failure
         calculation_schema.max_iterations = max_iterations
+        calculation_schema.number_of_molecules = n_molecules
 
         # Define the protocols which will run the simulation itself.
         protocols, value_source, output_to_store = generate_equilibration_protocols(
@@ -130,6 +131,7 @@ class Density(PhysicalProperty):
         schema = WorkflowSchema()
 
         schema.protocol_schemas = [
+            protocols.check_existing_data.schema,
             protocols.build_coordinates.schema,
             protocols.assign_parameters.schema,
             protocols.energy_minimisation.schema,
