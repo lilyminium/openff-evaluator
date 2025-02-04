@@ -1156,8 +1156,9 @@ class OpenMMSimulatedAnnealing(OpenMMSimulation):
 
         # heat up first to target, ignore inputs
         temperature_step = 0.5
+        system_ = context.getSystem()
         barostat = next(
-            fc for fc in system.getForces() if "MonteCarloBarostat" in str(type(fc))
+            fc for fc in system_.getForces() if "MonteCarloBarostat" in str(type(fc))
         )
         
         for temp in np.arange(
